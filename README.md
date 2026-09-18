@@ -140,6 +140,20 @@ npm run test:e2e:ui                # interactive debugger
 
 ---
 
+## Documentation
+
+| Document | What's in it |
+|----------|-------------|
+| **[RUNBOOK.md](RUNBOOK.md)** | Full setup guide, service URLs, credentials, 7 documented issues + solutions, useful commands |
+| **[docs/TESTING.md](docs/TESTING.md)** | Playwright e2e guide, mock strategy, writing new tests, backend Testcontainers setup, CI integration |
+| **[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)** | Fork workflow, branch naming, commit conventions, PR checklist, first-time GitHub publish guide |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | System architecture, module structure, data flow diagrams |
+| **[docs/SECURITY.md](docs/SECURITY.md)** | Security model, JWT flow, tenant isolation, prompt injection defence |
+| **[docs/RAG-ARCHITECTURE.md](docs/RAG-ARCHITECTURE.md)** | RAG pipeline deep-dive: ingestion, chunking, embedding, retrieval, prompting |
+| **[docs/MCP-ARCHITECTURE.md](docs/MCP-ARCHITECTURE.md)** | MCP Client/Server pattern, available tools |
+| **[docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)** | Prometheus metrics, Grafana dashboards, tracing |
+| **[docs/LLM-CLIENT-SERVER.md](docs/LLM-CLIENT-SERVER.md)** | Spring AI ChatClient → Ollama integration |
+
 ## Troubleshooting
 
 See **[RUNBOOK.md — Issues Faced & How We Solved Them](RUNBOOK.md#8-issues-faced--how-we-solved-them)** for documented solutions to:
