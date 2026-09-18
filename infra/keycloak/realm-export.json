@@ -1,0 +1,127 @@
+{
+  "realm": "enterprise-rag",
+  "enabled": true,
+  "displayName": "Enterprise RAG Platform",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "clients": [
+    {
+      "clientId": "rag-app",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "tenant-id-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "tenant_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "rag-frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:3000/*",
+        "http://localhost:8090/swagger-ui/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:8090"
+      ],
+      "protocol": "openid-connect",
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant-id-mapper",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "tenant_id",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "ADMIN",    "description": "Platform administrator" },
+      { "name": "UPLOADER", "description": "Can upload and manage documents" },
+      { "name": "USER",     "description": "Can query the knowledge base" }
+    ]
+  },
+  "protocolMappers": [
+    {
+      "name": "tenant-id-mapper",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "config": {
+        "userinfo.token.claim": "true",
+        "user.attribute": "tenant_id",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "claim.name": "tenant_id",
+        "jsonType.label": "String"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "admin@acme.com",
+      "email": "admin@acme.com",
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "Admin@1234", "temporary": false }],
+      "realmRoles": ["ADMIN", "UPLOADER", "USER"],
+      "attributes": { "tenant_id": ["acme"] }
+    },
+    {
+      "username": "user@acme.com",
+      "email": "user@acme.com",
+      "firstName": "Jane",
+      "lastName": "Doe",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "User@1234", "temporary": false }],
+      "realmRoles": ["USER"],
+      "attributes": { "tenant_id": ["acme"] }
+    },
+    {
+      "username": "user@beta.com",
+      "email": "user@beta.com",
+      "firstName": "Bob",
+      "lastName": "Smith",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "User@1234", "temporary": false }],
+      "realmRoles": ["USER"],
+      "attributes": { "tenant_id": ["beta"] }
+    }
+  ]
+}

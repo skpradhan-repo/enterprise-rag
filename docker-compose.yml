@@ -1,0 +1,201 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Enterprise RAG Platform — Local Development Stack
+#  Services: PostgreSQL+pgvector · Ollama · Keycloak · App · Prometheus · Grafana
+#
+#  Just run:  docker compose up -d
+#  All passwords and defaults are provided via .env (see .env.example)
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  rag-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  ollama-data:
+  keycloak-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+
+  # ── PostgreSQL 16 + pgvector ─────────────────────────────────────────────
+  postgres:
+    image: docker.io/pgvector/pgvector:pg16
+    container_name: rag-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB:       ragdb
+      POSTGRES_USER:     raguser
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ragpass}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d ragdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Ollama — LLM Server ──────────────────────────────────────────────────
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    container_name: rag-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  # ── Ollama model init — runs once then exits ─────────────────────────────
+  ollama-init:
+    image: docker.io/ollama/ollama:latest
+    container_name: rag-ollama-init
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL:       ${LLM_MODEL:-llama3.2}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "Pulling LLM model: $${LLM_MODEL}"
+        ollama pull "$${LLM_MODEL}"
+        echo "Pulling embedding model: $${EMBEDDING_MODEL}"
+        ollama pull "$${EMBEDDING_MODEL}"
+        echo "Models ready."
+    networks:
+      - rag-net
+
+  # ── Keycloak 26 — Identity Provider ─────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.5
+    container_name: rag-keycloak
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8180:8080"
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_DB:                       dev-file
+      KC_HTTP_RELATIVE_PATH:       /
+      KC_HEALTH_ENABLED:           "true"
+    command: start-dev --import-realm
+    volumes:
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
+      - keycloak-data:/opt/keycloak/data
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 90s
+
+  # ── Spring Boot Application ──────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      DB_HOST:          postgres
+      DB_PORT:          5432
+      DB_NAME:          ragdb
+      DB_USERNAME:      raguser
+      DB_PASSWORD:      ${POSTGRES_PASSWORD:-ragpass}
+      # issuer must match the "iss" claim browsers receive (public-facing URL)
+      KEYCLOAK_ISSUER:  http://localhost:8180/realms/enterprise-rag
+      # JWK URI uses the internal Docker network hostname so the app container
+      # can fetch public keys without routing through the host
+      KEYCLOAK_JWK_URI: http://keycloak:8080/realms/enterprise-rag/protocol/openid-connect/certs
+      OLLAMA_BASE_URL:  http://ollama:11434
+      LLM_MODEL:        ${LLM_MODEL:-llama3.2}
+      EMBEDDING_MODEL:  ${EMBEDDING_MODEL:-nomic-embed-text}
+      SERVER_PORT:      8090
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    networks:
+      - rag-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 90s
+
+  # ── Frontend (React + Nginx) ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rag-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - rag-net
+
+  # ── Prometheus ───────────────────────────────────────────────────────────
+  prometheus:
+    image: docker.io/prom/prometheus:v2.53.3
+    container_name: rag-prometheus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    networks:
+      - rag-net
+    depends_on:
+      - app
+
+  # ── Grafana ──────────────────────────────────────────────────────────────
+  grafana:
+    image: docker.io/grafana/grafana:11.4.0
+    container_name: rag-grafana
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - rag-net
+    depends_on:
+      - prometheus
